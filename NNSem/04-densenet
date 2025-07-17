@@ -1,0 +1,54 @@
+import tensorflow as tf
+from tensorflow.keras import layers, Model
+
+# Dense Block: multiple conv layers, each taking as input all previous feature maps
+def dense_block(x, blocks, growth_rate):
+    for _ in range(blocks):
+        y = layers.BatchNormalization()(x)
+        y = layers.Activation('relu')(y)
+        y = layers.Conv2D(4 * growth_rate, kernel_size=1, padding='same')(y)  # Bottleneck layer
+
+        y = layers.BatchNormalization()(y)
+        y = layers.Activation('relu')(y)
+        y = layers.Conv2D(growth_rate, kernel_size=3, padding='same')(y)
+
+        x = layers.concatenate([x, y], axis=-1)  # Concatenate input and output along channels
+    return x
+
+# Transition Layer: reduce feature map size and number of channels
+def transition_layer(x, reduction):
+    filters = int(x.shape[-1] * reduction)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2D(filters, kernel_size=1, padding='same')(x)
+    x = layers.AveragePooling2D(pool_size=2, strides=2)(x)
+    return x
+
+# Build DenseNet
+def build_densenet(input_shape=(224, 224, 3), num_classes=1000,
+                   blocks=[6, 12, 24, 16], growth_rate=32, reduction=0.5):
+    input_tensor = layers.Input(shape=input_shape)
+
+    # Initial conv layer
+    x = layers.Conv2D(64, kernel_size=7, strides=2, padding='same')(input_tensor)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    x = layers.MaxPooling2D(pool_size=3, strides=2, padding='same')(x)
+
+    # Dense blocks + transition layers
+    for block in blocks:
+        x = dense_block(x, blocks=block, growth_rate=growth_rate)
+        x = transition_layer(x, reduction)
+
+    # Global pooling & classifier
+    x = layers.GlobalAveragePooling2D()(x)
+    output_tensor = layers.Dense(num_classes, activation='softmax')(x)
+
+    model = Model(inputs=input_tensor, outputs=output_tensor)
+    return model
+
+# Instantiate the DenseNet model
+densenet = build_densenet()
+
+# Show model summary
+densenet.summary()
